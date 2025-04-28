@@ -13,7 +13,7 @@ The goal is to **predict the "energy above the hull"** (formation energy from el
 - **XGBoost**
 
 ### Dataset Source:
-The dataset is obtained via the **Next-Gen Materials Project API**:[Materials Project](https://next-gen.materialsproject.org/)
+The dataset is obtained via the **Next-Gen Materials Project API**:[Materials Project (MPR)](https://next-gen.materialsproject.org/). To pull dataset, download (free) api from MPR.
 
 ### ML Frameworks:
 - **TensorFlow** for DNN  
