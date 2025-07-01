@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 import numpy as np
+import os
 
 def draw_dnn(layer_sizes, neuron_colors=None, connection_colors=None, layer_labels=None):
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -15,8 +16,6 @@ def draw_dnn(layer_sizes, neuron_colors=None, connection_colors=None, layer_labe
 
     if connection_colors is None:
         connection_colors = ['green', 'blue', 'red']
-
-    
 
     if layer_labels is None:
         layer_labels = []
@@ -39,16 +38,6 @@ def draw_dnn(layer_sizes, neuron_colors=None, connection_colors=None, layer_labe
         visible_neurons = 5  # or 5, depending on space
         for j in range(layer_size):
             y = j * v_spacing + y_offset
-
-            '''if layer_size > visible_neurons:
-                if j == 1:
-                    # Add vertical dots between top and bottom neurons
-                    ax.text(x, y, '⋮', ha='center', va='center', fontsize=50)
-                    continue
-                elif j > 1 and j < layer_size - 1:
-                    continue  # Skip drawing middle neurons
-
-            # Draw regular neuron'''
             circle = Circle((x, y), radius=0.3, edgecolor="k", facecolor=neuron_colors[i], zorder=4)
             ax.add_patch(circle)
             # Draw connections
@@ -67,7 +56,8 @@ def draw_dnn(layer_sizes, neuron_colors=None, connection_colors=None, layer_labe
     ax.set_ylim(-2, v_spacing * max_neurons)
     plt.title("DNN Schematic", fontsize=22, loc='center')
     plt.tight_layout()
+    plt.savefig(os.path.join(os.getcwd(),'files','dnn_schematic.pdf'))
     plt.savefig('files/dnn_schematic.pdf')
 
-# ✨ Example usage
+# Draw DNN schematic
 draw_dnn([14, 32, 32, 1])
