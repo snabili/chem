@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
-path = os.path.join(os.getcwd() + 'files')
+path = os.path.join(os.getcwd() , 'files')
 
 import logging
 # Set logging level and format; logging.info go directly to pdp_results_log.txt
@@ -14,7 +14,7 @@ logging.basicConfig(
     #logger.setLevel(logging.ERROR), # supress prints
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(path + "/pdp_results_log.txt"),  # Log file
+        logging.FileHandler(path + "/preclassification.txt"),  # Log file
         logging.StreamHandler()                      # Optional to show in console
     ]
 )
@@ -52,7 +52,7 @@ included = [c for c in df.columns if c not in excluded]
 df['stability_label'] = classify_stability(df['energy_above_hull'])
 
 # ******************* split train, test, validation in pandas format *******************
-logger.info(f'Split train, validation and test in pandas format: {datetime.now().time().strftime('%H:%M:%S')}')
+logger.info(f"Split train, validation and test in pandas format: {datetime.now().time().strftime('%H:%M:%S')}")
 Xpd_train, Xpd_temp, ypd_train, ypd_temp = train_test_split( 
     df[included], df['stability_label'], 
     test_size=0.2,         # 20% of data goes into temporary set
@@ -72,13 +72,42 @@ Xpd_train_scaled = pd.DataFrame(scaler.fit_transform(Xpd_train),columns=Xpd_trai
 Xpd_val_scaled   = pd.DataFrame(scaler.transform(Xpd_val),      columns=Xpd_val.columns,    index=Xpd_val.index)
 Xpd_test_scaled  = pd.DataFrame(scaler.transform(Xpd_test),     columns=Xpd_test.columns,   index=Xpd_test.index)
 
-df_split = [Xpd_train, Xpd_train_scaled, ypd_train, Xpd_val, Xpd_val_scaled, ypd_val, Xpd_test, Xpd_test_scaled, ypd_test]
-combined_df = pd.concat(df_split, ignore_index=True)
-combined_df.to_csv(path + "/df_datasplit.csv", index=False)
+# Add identifier columns
+Xpd_train['split'] = 'train'
+Xpd_train_scaled['split'] = 'train_scaled'
+Xpd_val['split'] = 'val'
+Xpd_val_scaled['split'] = 'val_scaled'
+Xpd_test['split'] = 'test'
+Xpd_test_scaled['split'] = 'test_scaled'
+
+ypd_train = ypd_train.to_frame(name='label')
+ypd_train['split'] = 'train_label'
+ypd_val = ypd_val.to_frame(name='label')
+ypd_val['split'] = 'val_label'
+ypd_test = ypd_test.to_frame(name='label')
+ypd_test['split'] = 'test_label'
+
+# Combine all into a single DataFrame
+df_splits = pd.concat([
+    Xpd_train, Xpd_train_scaled,
+    Xpd_val, Xpd_val_scaled,
+    Xpd_test, Xpd_test_scaled,
+    ypd_train, ypd_val, ypd_test
+])
+
+# Move split column to front
+cols = df_splits.columns.tolist()
+cols.insert(0, cols.pop(cols.index('split')))
+df_splits = df_splits[cols]
+
+# Save to CSV
+output_path = os.path.join(path, 'df_datasplit.csv')
+df_splits.to_csv(output_path, index=False)
 
 # ******************* split train, test, validation in numpy format *******************
-logger.info(f'Split train, validation and test in pandas format: {datetime.now().time().strftime('%H:%M:%S')}')
+logger.info(f"Split train, validation and test in pandas format: {datetime.now().time().strftime('%H:%M:%S')}")
 X = df[included].values
+y = df['stability_label'].values
 X_train, X_temp,y_train, y_temp = train_test_split(X,       y,      test_size=0.2, random_state=123,     shuffle=True)
 X_val,   X_test,y_val,   y_test = train_test_split(X_temp,  y_temp, test_size=0.5, random_state=123 + 1, shuffle=True)
 # normalize features
@@ -97,4 +126,4 @@ data_dict = {
     'y_test':           y_test
 }
 np.savez(path + '/npz_datasplits.npz', **data_dict)
-logger.info(f'Done!!!: {datetime.now().time().strftime('%H:%M:%S')}')
+logger.info(f"Done!!!: {datetime.now().time().strftime('%H:%M:%S')}")
