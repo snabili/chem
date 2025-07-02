@@ -62,7 +62,7 @@ Xpd_train, Xpd_temp, ypd_train, ypd_temp = train_test_split(
 
 Xpd_val, Xpd_test, ypd_val, ypd_test = train_test_split( 
     df[included], df['stability_label'], 
-    test_size=0.5,         # 20% of data goes into temporary set
+    test_size=0.5,         # 50% of data goes to val and test
     random_state=123 + 1,  # ensures reproducibility
     shuffle=True           # shuffles before splitting
 )
