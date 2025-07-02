@@ -1,89 +1,104 @@
+# DNN modules
 import tensorflow as tf
-from tensorflow import keras
-
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras import layers
 
-# Linear regression and random forest packages
-import scipy
-import sklearn
+# data preparation for MLs
+from sklearn.utils import class_weight
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report
+from sklearn.datasets import load_iris
 
-# General packages
+
+# Logistic regression and random forest packages
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+
+# General modules
 import numpy as np
 import pandas as pd
 import os, re
+path = os.path.join(os.getcwd(), 'files')
 from collections import OrderedDict, defaultdict
-from flatten_dict import flatten
 import pickle
-
-# material project datasets
-
-from scikeras.wrappers import KerasRegressor
+import joblib
 
 
-def classify_stability(energy_above_hull, threshold=0.02):
-    """
-    Classify materials into 0 (stable) and 1 (unstable).
-    
-    Args:
-        energy_above_hull (array-like): Energy above hull values (eV/atom).
-        threshold (float): Stability threshold (eV/atom). Default is 0.05.
-        
-    Returns:
-        np.ndarray: Array of 0 (stable) and 1 (unstable).
-    """
-    energy_above_hull = np.array(energy_above_hull)
-    labels = np.where(energy_above_hull <= threshold, 0, 1)
-    return labels
+import logging
+path = os.path.join(os.getcwd(), 'files')
+# Set logging level and format; logging.info go directly to pdp_results_log.txt
+logging.basicConfig(
+    level=logging.INFO,
+    #logger.setLevel(logging.ERROR), # supress prints
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(path + "/classification.txt"),  # Log file
+        logging.StreamHandler()                      # Optional to show in console
+    ]
+)
+logger = logging.getLogger(__name__)
 
-# read CSV with all features including energy_above_hull column
-df = pd.read_csv("/Users/saranabili/Desktop/jobHunts/chem/files/final_material_data.csv")
+# load split data
+data_dict = np.load(path + '/npz_datasplits.npz', allow_pickle=True)
+X_train,    X_train_scaled, y_train = data_dict['X_train'], data_dict['X_train_scaled'],data_dict['y_train']
+X_val,      X_val_scaled,   y_val   = data_dict['X_val'],   data_dict['X_val_scaled'],  data_dict['y_val']
+X_test,     X_test_scaled,  y_test  = data_dict['X_test'],  data_dict['X_test_scaled'], data_dict['y_test']
 
-# Apply the classification
-df['stability_label'] = classify_stability(df['energy_above_hull'])
+# *************************************************************************************
+# *********************** Extract Hyperparameter values from **************************
+# ***********************    the out of classification_hyperpars.py *******************
+# *************************************************************************************
 
-y = df['stability_label'].values
-excluded = ['energy_above_hull','volume','nsites','is_stable','formula_pretty','total_magnetization','stability_label','composition','structure','material_id']
-included = [c for c in df.columns if c not in excluded]
-X = df[included].values
+def extract_best_scores(filename):
+    pattern = r"Best Score:\s+([0-9.]+)\s+using\s+(\{.*?\})"
+    results = []
+    with open(filename, 'r') as f:
+        for line in f:
+            match = re.search(pattern, line)
+            if match:
+                score = float(match.group(1))
+                params = eval(match.group(2))  # use `ast.literal_eval()` if safety is a concern
+                results.append((score, params))
+    return results
 
-# save pandas dataframe to use for feature importance plot
-df[included].to_csv('files/pd_feature.csv')
+ML_dir = path + '/MLHypertune_pars/'
+dnn_txtfile =  ML_dir + 'DNN_hypertune.txt'
+rf_txtfile  =  ML_dir + 'RF_hypertune.txt'
+lr_txtfile  =  ML_dir + 'LR_hypertune.txt'
+
+dnn_entries = extract_best_scores(dnn_txtfile)
+rf_entries  = extract_best_scores(rf_txtfile)
+lr_entries  = extract_best_scores(lr_txtfile)
+
+Params = defaultdict()
+ml_entries = {'DNN':dnn_entries,'RF':rf_entries,'LR':lr_entries}
+for key,entry in ml_entries.items():
+    Score=[]
+    Params[key] = {}
+    for i, (score, params) in enumerate(entry):
+        Score.append(score)
+        Params[key][score] = params
 
 
-scaler = StandardScaler() # normalized features to mean = 0 and std = 1
-X = scaler.fit_transform(X)
+# *************************************************************************************
+# *********************** Deep Neural Net *********************************************
+# *************************************************************************************
 
-X_train, X_temp,y_train, y_temp = train_test_split(X,       y,      test_size=0.3, random_state=8911123)
-X_val,   X_test,y_val,   y_test = train_test_split(X_temp,  y_temp, test_size=0.5, random_state=8911123)
+# read hyperparamters from classification_hyperpars.py output file
+dnn_params = Params['DNN'][max(Params['DNN'])]
+neurons    = dnn_params['model__hidden_units']
+epochs     = dnn_params['epochs']
+batch      = dnn_params['batch_size']
+layer_num  = dnn_params['model__layer_num']
 
-# save test, train, val for plotting purposes:
-data_dict = {
-    'X_train': X_train,
-    'y_train': y_train,
-    'X_val': X_val,
-    'X_test': X_test,
-    'y_val': y_val,
-    'y_test': y_test
-}
-np.savez('files/data_splits.npz', **data_dict)
-
-# read hyperparamters from dnn_hyperpar.py output file
-neurons = 64
 act='relu'
-epochs = 100
-batch = 128
-layer_num = 4
 # Optimizer with learning rate
 adam = tf.keras.optimizers.legacy.Adam(learning_rate=0.0003)
 loss = 'binary_crossentropy'
 
-
-lr_scheduler = keras.callbacks.ReduceLROnPlateau(
+# learning rate scheduler; lowers the learning rate when the validation loss plateaus
+lr_scheduler = tf.keras.callbacks.ReduceLROnPlateau(
     monitor='val_loss',
     factor=0.5,
     patience=3,
@@ -92,38 +107,36 @@ lr_scheduler = keras.callbacks.ReduceLROnPlateau(
 )
 
 # Define model
-dnn_model = Sequential()
-
+DNN_model = Sequential()
 # Input layer
-dnn_model.add(layers.Dense(neurons, activation=act, input_shape=[X.shape[1]]))
-dnn_model.add(layers.Dropout(0.1))
-dnn_model.add(layers.BatchNormalization())
+DNN_model.add(layers.Dense(neurons, activation=act, input_shape=[X_train_scaled.shape[1]]))
+DNN_model.add(layers.Dropout(0.1))
+DNN_model.add(layers.BatchNormalization())
 
 # Hidden layers (using a loop)
-for _ in range(layer_num):  # 4 hidden layers
-    dnn_model.add(layers.Dense(neurons, activation=act))
-    dnn_model.add(layers.Dropout(0.1))
-    dnn_model.add(layers.BatchNormalization())
+for _ in range(layer_num):  # 2 hidden layers
+    DNN_model.add(layers.Dense(neurons, activation=act))
+    DNN_model.add(layers.Dropout(0.3)) # typical dropout for moderate to strong regularization
+    DNN_model.add(layers.BatchNormalization())
 
 # Output layer
-#dnn_model.add(layers.Dense(1,activation='relu'))
-dnn_model.add(layers.Dense(1,activation='sigmoid'))
+DNN_model.add(layers.Dense(1,activation='sigmoid'))
 
 #Compile the model
-dnn_model.compile(
+DNN_model.compile(
     optimizer=adam,
     loss=loss,
     metrics=['accuracy']
 )
-print(dnn_model.summary())
+logger.info(DNN_model.summary())
 
-early_stopping = keras.callbacks.EarlyStopping(
+# to avoid overfitting
+early_stopping = tf.keras.callbacks.EarlyStopping(
     patience = 5,
     min_delta = 0.001,
     restore_best_weights = True
 )
 
-from sklearn.utils import class_weight
 # Compute class weights
 class_weights = class_weight.compute_class_weight(
     class_weight='balanced',
@@ -132,18 +145,66 @@ class_weights = class_weight.compute_class_weight(
 )
 class_weights = dict(enumerate(class_weights))
 
-history_dnn = dnn_model.fit(
-    X_train, y_train,
-    validation_data=(X_val, y_val),
+history_dnn = DNN_model.fit(
+    X_train_scaled, y_train,
+    validation_data=(X_val_scaled, y_val),
     batch_size=batch,
     epochs=epochs,
     callbacks=[early_stopping, lr_scheduler],
+    #callbacks=[lr_scheduler],
     class_weight=class_weights
 )
 
-# Save dnn trained classification file
-dnn_model.save("/Users/saranabili/Desktop/jobHunts/chem/files/dnn_classification.h5")
+data = load_iris()
+y_DNN_pred = DNN_model.predict(X_test_scaled)
+labels = np.unique(y_test)
 
-# Save history as a pickle file
-with open("/Users/saranabili/Desktop/jobHunts/chem/files/dnn_history.pkl", "wb") as f:
+final_val = defaultdict(list)
+for s in ['val_loss','loss','val_accuracy','accuracy']:
+    final_val[s].append(history_dnn.history[s][-1])
+logger.info({k: f"{v[0]:.4f}" for k, v in final_val.items()})
+
+# Save dnn trained classification + history files
+DNN_model.save(path + '/dnn_classification_allelements.h5')
+with open(path + "/dnn_history_allelements.pkl", "wb") as f:
     pickle.dump(history_dnn.history, f)
+
+# *****************************************************************************************
+# *********************** Logistic Regression *********************************************
+# *****************************************************************************************
+
+# read hyperparamters from classification_hyperpars.py output file
+lr_params = Params['LR'][max(Params['LR'])]
+C = lr_params['C']
+max_iter = lr_params['max_iter']
+penalty = lr_params['penalty']
+
+LR_model = LogisticRegression(C=C, penalty=penalty, solver='saga', max_iter=max_iter, class_weight='balanced') # hypertuned
+LR_model.fit(X_train_scaled, y_train)
+y_LR_pred = LR_model.predict(X_test_scaled)
+labels = np.unique(y_test)
+logger.info(classification_report(y_test, y_LR_pred, target_names=data.target_names[labels]))
+joblib.dump(LR_model, path + "/LogisticRegression_model.joblib")
+
+# *************************************************************************************
+# *********************** Random Forest ***********************************************
+# *************************************************************************************
+# read hyperparamters from classification_hyperpars.py output file
+rf_params = Params['RF'][max(Params['RF'])]
+n_estimator       = rf_params['calibrated_rf__base_estimator__n_estimators']
+min_samples_split = rf_params['calibrated_rf__base_estimator__min_samples_split']
+max_depth         = rf_params['calibrated_rf__base_estimator__max_depth']
+
+RF_model = RandomForestClassifier(class_weight='balanced', n_estimators=n_estimator, min_samples_split=min_samples_split, max_depth=max_depth, random_state=42 + 2)
+RF_model.fit(X_train, y_train) # Random Forests is scale-invariant --> normalization doesn’t help
+#data = load_iris()
+y_RF_pred = RF_model.predict(X_test)
+labels = np.unique(y_test)
+logger.info(classification_report(y_test, y_RF_pred, target_names=data.target_names[labels]))
+joblib.dump(RF_model, path + "/RandomForest_model.joblib")
+
+
+
+
+
+
