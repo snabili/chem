@@ -21,15 +21,21 @@ import pandas as pd
 import numpy as np
 import os
 import argparse
-import time
 from datetime import datetime
-import logging
 
-# Set logging level and format
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+import logging
+path = os.path.join(os.getcwd(), 'files')
+# Set logging level and format; logging.info go directly to pdp_results_log.txt
+logging.basicConfig(
+    level=logging.INFO,
+    #logger.setLevel(logging.ERROR), # supress prints
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(path + "/classification.txt"),  # Log file
+        logging.StreamHandler()                      # Optional to show in console
+    ]
+)
 logger = logging.getLogger(__name__)
-#logger.setLevel(logging.ERROR)
-logger.setLevel(logging.INFO)
 
 # suppress warnings
 import warnings
@@ -38,7 +44,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # Create argument parser
 parser = argparse.ArgumentParser(description="Hyperparameter tuning for DNN")
 # Add arguments
-parser.add_argument("--npzfile",    type=str,               help="npz file path",                   default=os.path.join(os.getcwd(), 'files', 'data_splits.npz'))
+parser.add_argument("--npzfile",    type=str,               help="npz file path",                   default=os.path.join(os.getcwd(), 'files', 'npz_datasplits.npz'))
 parser.add_argument("--HD",         type=int,   nargs="+",  help="tune DNN hidden units")#,         default=[64])
 parser.add_argument("--NL",         type=int,   nargs="+",  help="tune number of hidden layers")#,  default=[1])
 parser.add_argument("--epochs",     type=int,   nargs="+",  help="tune epochs",                     default=[50])
@@ -177,7 +183,12 @@ def LR_hypertune():
     logger.info(f"LR Test AUC: {auc:.4f}")
     save_results('LR',grid_result) # Save best LogisticRegression model hyperparameters result to a txt file
 
-def save_results(ml_type, grid_result):
+def save_results(ml_type, grid_result): 
+    """ 
+    works for LR and RF as DNN is intensive to run all hyperpars at once
+    had to write a for loop to run per batch size configuration
+
+    """
     hypertune_file = os.path.join(os.getcwd(), 'files', 'MLHypertune_pars', ml_type + '_hypertune.txt')
     os.makedirs(os.path.dirname(hypertune_file), exist_ok=True)
 
