@@ -4,7 +4,8 @@ from contextlib import contextmanager
 from scipy.ndimage import gaussian_filter
 import requests
 import numpy as np
-import uuid, sys, time, argparse
+import uuid, sys, time, argparse, os
+import warnings
 np.random.seed(1001)
 #from plotting_func import mt_wind
 
@@ -28,6 +29,30 @@ def setup_logger(name='Chem compound thermo-stability'):
     return logger
 logger = setup_logger()
 
+def setup_logging(log_path="logs/test.txt", level=logging.INFO):
+    """
+    Configures logging and suppresses warnings.
+
+    Args:
+        log_path (str): Path to the log file.
+        level (int): Logging level (e.g., logging.INFO, logging.ERROR).
+    """
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    warnings.filterwarnings("ignore", category=FutureWarning)
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_path),
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Logging initialized.")
+    return logger
+
 
 def pull_arg(*args, **kwargs):
     """
@@ -50,7 +75,7 @@ def read_arg(*args, **kwargs):
 
 
 #from contextlib import contextmanager
-
+# decorator as command dispatcher
 #@contextmanager
 class Scripter:
     def __init__(self):
@@ -96,21 +121,3 @@ def set_matplotlib_fontsizes(smaller=14,small=18, medium=22, large=26):
     plt.rc('ytick', labelsize=smaller)    # fontsize of the tick labels
     plt.rc('legend', fontsize=small)    # legend fontsize
     plt.rc('figure', titlesize=large)   # fontsize of the figure title
-
-
-def get_record(key):
-    """
-    Looks for the sample key (e.g. "QCD_Pt_1400to1800") in the cross section
-    file from TreeMaker
-    """
-    text = load_treemaker_crosssection_txt()
-    match = re.search('"'+key+'"' + r' : ({[\w\W]*?})', text, re.MULTILINE)
-    if not match: raise Exception(f'Could not find record for {key}')
-    # Turn it into a dict of dicts
-    record_txt = (
-        match.group(1)
-        .replace('xsvalues', 'dict')
-        .replace('brvalues', 'dict')
-        .replace('kfactorvalues', 'dict')
-        )
-    return Record(eval(record_txt))

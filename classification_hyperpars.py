@@ -13,9 +13,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.pipeline import Pipeline
 
-# costume modules
-import general as gen
-
 # general modules
 import pandas as pd
 import numpy as np
@@ -23,23 +20,12 @@ import os
 import argparse
 from datetime import datetime
 
-import logging
-path = os.path.join(os.getcwd(), 'files')
-# Set logging level and format; logging.info go directly to pdp_results_log.txt
-logging.basicConfig(
-    level=logging.INFO,
-    #logger.setLevel(logging.ERROR), # supress prints
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(path + "/classification.txt"),  # Log file
-        logging.StreamHandler()                      # Optional to show in console
-    ]
-)
-logger = logging.getLogger(__name__)
+# costume modules
+import general as gen
 
-# suppress warnings
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
+path = os.path.join(os.getcwd() , 'files')
+logger = gen.setup_logging(path + "/hypertune.txt")
+
 
 # Create argument parser
 parser = argparse.ArgumentParser(description="Hyperparameter tuning for DNN")

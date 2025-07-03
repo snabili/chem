@@ -10,23 +10,11 @@ from scikeras.wrappers import KerasClassifier # keras optimizers are not picklab
 
 from sklearn.inspection import partial_dependence
 
-import logging
-path = os.path.join(os.getcwd(), 'files')
-# Set logging level and format; logging.info go directly to pdp_results_log.txt
-logging.basicConfig(
-    level=logging.INFO,
-    #logger.setLevel(logging.ERROR), # supress prints
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(path + "/pdp_results_log.txt"),  # Log file
-        logging.StreamHandler()                      # Optional to show in console
-    ]
-)
-logger = logging.getLogger(__name__)
+import general as gen
 
-# suppress warnings
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
+path = os.path.join(os.getcwd(), 'files')
+logger = gen.setup_logging(path + "/plotting.txt")
+gen.set_matplotlib_fontsizes() # set up plt fontsize
 
 # define the base for binary classification
 def classify_stability(energy_above_hull, threshold=0.05):

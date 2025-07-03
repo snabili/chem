@@ -5,24 +5,11 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import os
+import general as gen
+
+
 path = os.path.join(os.getcwd() , 'files')
-
-import logging
-# Set logging level and format; logging.info go directly to pdp_results_log.txt
-logging.basicConfig(
-    level=logging.INFO,
-    #logger.setLevel(logging.ERROR), # supress prints
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(path + "/preclassification.txt"),  # Log file
-        logging.StreamHandler()                      # Optional to show in console
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# suppress warnings
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
+logger = gen.setup_logging(path + "/preclassification.txt",False)
 
 # define the base for binary classification
 def classify_stability(energy_above_hull, threshold=0.05):
@@ -60,6 +47,14 @@ Xpd_train, Xpd_temp, ypd_train, ypd_temp = train_test_split(
     shuffle=True           # shuffles before splitting
 )
 
+Xpd_ebh_train, Xpd_ebh_temp, ypd_ebh_train, ypd_ebh_temp = train_test_split( 
+    df[included], df['energy_above_hull'], 
+    test_size=0.2,         # 20% of data goes into temporary set
+    random_state=123,      # ensures reproducibility
+    shuffle=True           # shuffles before splitting
+)
+
+
 Xpd_val, Xpd_test, ypd_val, ypd_test = train_test_split( 
     df[included], df['stability_label'], 
     test_size=0.5,         # 50% of data goes to val and test
@@ -68,31 +63,38 @@ Xpd_val, Xpd_test, ypd_val, ypd_test = train_test_split(
 )
 
 # normalize train, test, val
-Xpd_train_scaled = pd.DataFrame(scaler.fit_transform(Xpd_train),columns=Xpd_train.columns,  index=Xpd_train.index)
-Xpd_val_scaled   = pd.DataFrame(scaler.transform(Xpd_val),      columns=Xpd_val.columns,    index=Xpd_val.index)
-Xpd_test_scaled  = pd.DataFrame(scaler.transform(Xpd_test),     columns=Xpd_test.columns,   index=Xpd_test.index)
+Xpd_train_scaled        = pd.DataFrame(scaler.fit_transform(Xpd_train),     columns=Xpd_train.columns,      index=Xpd_train.index)
+Xpd_ebh_train_scaled    = pd.DataFrame(scaler.fit_transform(Xpd_ebh_train), columns=Xpd_ebh_train.columns,  index=Xpd_ebh_train.index) # to plot ebh vs feat for train data
+Xpd_val_scaled          = pd.DataFrame(scaler.transform(Xpd_val),           columns=Xpd_val.columns,        index=Xpd_val.index)
+Xpd_test_scaled         = pd.DataFrame(scaler.transform(Xpd_test),          columns=Xpd_test.columns,       index=Xpd_test.index)
 
 # Add identifier columns
-Xpd_train['split'] = 'train'
-Xpd_train_scaled['split'] = 'train_scaled'
-Xpd_val['split'] = 'val'
-Xpd_val_scaled['split'] = 'val_scaled'
-Xpd_test['split'] = 'test'
-Xpd_test_scaled['split'] = 'test_scaled'
+Xpd_train['split']              = 'train'
+Xpd_train_scaled['split']       = 'train_scaled'
+Xpd_ebh_train['split']          = 'train_ebh'
+Xpd_ebh_train_scaled['split']   = 'train_ebh_scaled'
+Xpd_val['split']                = 'val'
+Xpd_val_scaled['split']         = 'val_scaled'
+Xpd_test['split']               = 'test'
+Xpd_test_scaled['split']        = 'test_scaled'
 
-ypd_train = ypd_train.to_frame(name='label')
-ypd_train['split'] = 'train_label'
-ypd_val = ypd_val.to_frame(name='label')
-ypd_val['split'] = 'val_label'
-ypd_test = ypd_test.to_frame(name='label')
-ypd_test['split'] = 'test_label'
+ypd_train       = ypd_train.to_frame(name='label')
+ypd_train['split']      = 'train_label'
+ypd_ebh_train   = ypd_ebh_train.to_frame(name='label')
+ypd_ebh_train['split']  = 'train_ebh_label'
+ypd_val         = ypd_val.to_frame(name='label')
+ypd_val['split']        = 'val_label'
+ypd_test        = ypd_test.to_frame(name='label')
+ypd_test['split']       = 'test_label'
 
 # Combine all into a single DataFrame
 df_splits = pd.concat([
-    Xpd_train, Xpd_train_scaled,
-    Xpd_val, Xpd_val_scaled,
-    Xpd_test, Xpd_test_scaled,
-    ypd_train, ypd_val, ypd_test
+    Xpd_train,      Xpd_train_scaled,
+    Xpd_ebh_train,  Xpd_ebh_train_scaled,
+    Xpd_val,        Xpd_val_scaled,
+    Xpd_test,       Xpd_test_scaled,
+    ypd_train,      ypd_ebh_train,
+    ypd_val,        ypd_test
 ])
 
 # Move split column to front
