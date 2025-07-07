@@ -17,9 +17,6 @@ batch_size=$((total_items / 50))
 echo "Total items: $total_items"
 echo "Batch size: $batch_size"
 
-batch_size=25
-total_items=50
-
 max_jobs=4
 job_count=0
 
@@ -28,7 +25,7 @@ for ((i=0; i<total_items; i+=batch_size)); do
     end=$((i + batch_size))
     output_file="$LOG_DIR/run_from${start}to${end}.log"
     echo "$output_file"
-    python test_bondstruct.py "$start" "$end" > "$output_file" 2>&1 &
+    python common.py bond_structure "$start" "$end" > "$output_file" 2>&1 &
     ((job_count++))
     if ((job_count % max_jobs == 0)); then
         wait  # Wait for current batch of jobs to finish
