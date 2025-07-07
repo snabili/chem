@@ -15,25 +15,19 @@ import json
 import argparse as arg
 from multiprocessing import Pool, cpu_count  # multi-processing
 from joblib import Parallel, delayed # to avoid bad structure delay
-import os
+from datetime import datetime
+import psutil
+import os, sys
 os.environ["OMP_NUM_THREADS"] = "1"
 
 # costume project modules:
 import creds
 import general as gen 
 
-# Suppress annoying warnings
-import warnings
-warnings.simplefilter(action='ignore', category=UserWarning)
-warnings.simplefilter(action='ignore', category=FutureWarning)
-ALL_ELEMENTS = None
 
-import logging
-# Set logging level and format
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-#logger.setLevel(logging.INFO)
-logger.setLevel(logging.ERROR) # supress prints
+path = os.path.join(os.getcwd(), 'files')
+logger = gen.setup_logging(path + "/common.txt")
+gen.set_matplotlib_fontsizes() # set up plt fontsize
 # ==========================================================================================
 #  Functions:
 #     Bond structure, atomic fraction, remove bad element from queue
@@ -129,7 +123,9 @@ def data_acquisition():
     # Basic material properties
     logger.info("Querying material summaries...")
     api_key = creds.api_key
-    mpr = MPRester(api_key)  
+    mpr = MPRester(api_key)
+    process = psutil.Process(os.getpid())
+    start_cpu_times = process.cpu_times()
     docs = mpr.materials.summary.search(
         fields=fields,
         formation_energy=(-20, 5),
@@ -170,6 +166,12 @@ def data_acquisition():
     df['all_elements'] = pd.DataFrame(all_elements)
     df.to_csv('files/df.csv',index=False)
     logger.info(f"finished adding more features at:  {datetime.now().time().strftime('%H:%M:%S')}")
+    end_cpu_times = process.cpu_times()
+
+    # Calculate CPU time (user + system)
+    cpu_time_used = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+    logger.info(f"\nCPU time used (main process): {cpu_time_used:.2f} seconds")
+
     
 
 @scripter
@@ -179,35 +181,53 @@ def atomic_fraction():
     records = df.to_dict("records")
     ALL_ELEMENTS = df['all_elemets']
     fraction_records = []
+    process = psutil.Process(os.getpid())
+    start_cpu_times = process.cpu_times()
     for record in records:
         fraction = atomic_fraction_row(record)
         fraction_records.append(fraction)
     logger.info(f"done atomic fraction at:  {datetime.now().time().strftime('%H:%M:%S')}")
     df_fractions = pd.DataFrame(fraction_records)
     df_fractions.to_csv('files/df_fractions.csv',index=False)
+    end_cpu_times = process.cpu_times()
+    # Calculate CPU time (user + system)
+    cpu_time_used = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+    logger.info(f"\nCPU time used (main process): {cpu_time_used:.2f} seconds")
 
 @scripter
 def bond_structure():
-    logger.info('opening structure json file:  ')
+    start = int(sys.argv[1])
+    end = int(sys.argv[2])
+
+    logger.info(f'Processing batch from {start} to {end}')
     with open('files/structures_dict_modified.json', 'r') as f:
         structures_dict_raw = json.load(f)
+
+    process = psutil.Process(os.getpid())
+    start_cpu_times = process.cpu_times()
 
     structures_dict = {
         mid: Structure.from_dict(data)
         for mid, data in structures_dict_raw.items()
     }
     material_ids = list(structures_dict.keys())
-    args = [(mid, structures_dict[mid]) for mid in material_ids if mid in structures_dict]
+    args = [(mid, structures_dict[mid]) for mid in material_ids[start:end]]
+
     logger.info("Calculating bond statistics with multiprocessing and joblib...")
-    n_jobs = min(8, cpu_count())
-    logger.info('number of jobs: ',n_jobs)  
+    n_jobs = min(4, cpu_count())
+    logger.info(f'Number of jobs: {n_jobs}')  
+
     results = Parallel(n_jobs=n_jobs, verbose=10, batch_size="auto")(
-        delayed(safe_process_material)(arg) for arg in args[39000:42000]
+        delayed(safe_process_material)(arg) for arg in args
     )
     results = [r for r in results if r is not None]
-    logger.info(f"done with bond statistics at:  {datetime.now().time().strftime('%H:%M:%S')}")
     df_bond_stats = pd.DataFrame(results)
-    df_bond_stats.to_csv('files/df_bond_stats_from39000to42000.csv')
+    df_bond_stats.to_csv(f'files/bond_stats/df_bond_stats_from{start}to{end}.csv')
+    end_cpu_times = process.cpu_times()
+    # Calculate CPU time (user + system)
+    cpu_time_used = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+    logger.info(f"\nCPU time used (main process): {cpu_time_used:.2f} seconds  with {n_jobs:.1f} cpu_counts")
+
 
 @scripter
 def merge_df_file():
@@ -227,6 +247,6 @@ def merge_df_structure():
     df_merged_struct = pd.concat(df_list, ignore_index=True)
     df_merged_struct.to_csv(os.path.join(os.getcwd(),'files','df_bond_stats.csv'))
 
-    
+
 if __name__ == '__main__':
     scripter.run()
